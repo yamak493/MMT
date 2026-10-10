@@ -1,0 +1,109 @@
+{
+  "name": "monocam-motion-tracer",
+  "productName": "MonoCam Motion Trace",
+  "version": "1.0.0",
+  "description": "単眼カメラの動画から人体のモーションを推定し、MMD のモーション（VMD）を作成するソフトウェア",
+  "main": "dist/main/main.js",
+  "author": "yamak493",
+  "license": "AGPL-3.0-only",
+  "homepage": "https://github.com/yamak493/MMT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yamak493/MMT.git"
+  },
+  "private": true,
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "build:watch": "node scripts/build.mjs --watch",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "npm run build && electron .",
+    "dev": "node scripts/build.mjs --dev && electron . --dev",
+    "test": "npm run typecheck && node scripts/run-tests.mjs",
+    "dist": "npm run build && electron-builder --win --x64",
+    "dist:dir": "npm run build && electron-builder --win --x64 --dir",
+    "test:engine": "python -m pytest engine/tests -q"
+  },
+  "dependencies": {
+    "@babylonjs/core": "9.29.0",
+    "babylon-mmd": "1.3.0",
+    "encoding-japanese": "2.4.0",
+    "yauzl": "3.4.0",
+    "yazl": "3.3.1"
+  },
+  "devDependencies": {
+    "@types/encoding-japanese": "2.4.0",
+    "@types/node": "22.20.5",
+    "@types/yauzl": "3.4.0",
+    "@types/yazl": "3.3.1",
+    "electron": "44.5.1",
+    "electron-builder": "26.15.3",
+    "esbuild": "0.28.2",
+    "typescript": "5.9.3"
+  },
+  "build": {
+    "appId": "com.yamak493.monocam-motion-tracer",
+    "productName": "MonoCam Motion Trace",
+    "copyright": "Copyright © 2026 yamak493",
+    "artifactName": "MonoCam-Motion-Tracer-Setup-${version}.${ext}",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "!dist/THIRD_PARTY_NOTICES.txt",
+      "package.json",
+      "build/icon.png"
+    ],
+    "extraResources": [
+      {
+        "from": "engine",
+        "to": "engine",
+        "filter": [
+          "mmt_engine/**/*",
+          "requirements.txt",
+          "!**/__pycache__/**",
+          "!**/*.pyc"
+        ]
+      },
+      {
+        "from": "LICENSE",
+        "to": "LICENSE"
+      },
+      {
+        "from": "dist/THIRD_PARTY_NOTICES.txt",
+        "to": "THIRD_PARTY_NOTICES.txt"
+      }
+    ],
+    "asar": true,
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "MonoCam Motion Trace",
+      "license": "LICENSE",
+      "deleteAppDataOnUninstall": true
+    },
+    "fileAssociations": [
+      {
+        "ext": "mmt",
+        "name": "MonoCam Motion Trace Project",
+        "description": "MonoCam Motion Trace プロジェクト",
+        "icon": "build/icon.ico"
+      }
+    ]
+  }
+}

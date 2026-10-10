@@ -1,0 +1,16 @@
+# MonoCam Motion Trace エンジンの依存ライブラリ（直接使うもの）。
+# アプリが実際に入れるのは、ここから依存先まで版を固定した requirements.txt。変更したら次で作り直す:
+#   uv pip compile requirements.in -o requirements.txt --python-version 3.11 --python-platform x86_64-pc-windows-msvc --no-emit-package torch --no-emit-package torchvision --no-emit-package torchaudio
+numpy>=1.26,<2.4
+scipy>=1.11
+imageio-ffmpeg>=0.5
+ai-edge-litert>=1.2
+demucs==4.0.1
+allosaurus==1.0.2
+soundfile>=0.12
+
+# PyTorch はアプリが GPU に合わせて別に入れる（src/main/setup.ts の TORCH_PACKAGES と同じ版にする）。
+# 依存先の版を合わせるためだけに書いており、requirements.txt には出さない。
+torch==2.7.1
+torchvision==0.22.1
+torchaudio==2.7.1

@@ -1,0 +1,7 @@
+node_modules/
+dist/
+release/
+.test-build/
+__pycache__/
+*.pyc
+.pytest_cache/

@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="ja">
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="Content-Security-Policy"
+          content="default-src 'self' app: media:; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' app: media: data: blob:; media-src media: blob:; connect-src 'self' app: media: data: blob:; worker-src 'self' blob:; font-src 'self' app:">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>MonoCam Motion Trace</title>
+    <link rel="stylesheet" href="styles/app.css">
+</head>
+<body>
+<header id="header" class="titlebar">
+    <div class="app-logo" title="MonoCam Motion Trace"><img src="assets/logo.png" alt="">MMT</div>
+    <nav id="menubar" class="menubar"></nav>
+    <div class="titlebar-drag"><span id="title-text" class="title-text"></span></div>
+    <button id="btn-export" class="titlebar-button primary" disabled>VMD出力</button>
+    <div class="titlebar-controls-space"></div>
+</header>
+
+<main id="workspace">
+    <section id="video-pane" class="pane">
+        <div class="pane-header"><span>動画プレビュー</span><span id="video-info" class="pane-info"></span></div>
+        <div class="pane-body" id="video-body">
+            <video id="video" preload="auto" playsinline></video>
+            <div id="video-empty" class="empty-state">
+                <div class="empty-icon">▶</div>
+                <p id="video-empty-text">動画を読み込むと、ここに表示されます</p>
+                <button id="btn-load-video" class="button">動画を読み込む</button>
+            </div>
+            <div id="video-overlay" class="video-overlay hidden"></div>
+        </div>
+        <div class="pane-footer" id="video-footer">
+            <button id="btn-capture" class="button small" disabled title="動画の区間を選んで、モーションを抽出します">キャプチャ…</button>
+            <span id="video-capture-hint" class="hint"></span>
+        </div>
+    </section>
+    <div class="splitter-v" id="splitter-v" title="ドラッグで幅を変えます"></div>
+    <section id="viewer-pane" class="pane">
+        <div class="pane-header">
+            <span>3D モデル プレビュー</span><span id="model-info" class="pane-info"></span>
+            <div class="pane-tools">
+                <label class="check small"><input type="checkbox" id="chk-physics" checked>物理演算</label>
+                <label class="check small"><input type="checkbox" id="chk-grid" checked>グリッド</label>
+                <button id="btn-camera-reset" class="button small" title="カメラをモデルに合わせます">視点リセット</button>
+            </div>
+        </div>
+        <div class="pane-body" id="viewer-body">
+            <canvas id="viewer-canvas" title="左ドラッグ: 視点の移動 / 右ドラッグ: 角度の調整 / ホイール: 拡大・縮小"></canvas>
+            <div id="model-empty" class="empty-state">
+                <div class="empty-icon">◆</div>
+                <p>はじめにモデル（PMX / PMD）を読み込んでください</p>
+                <button id="btn-load-model" class="button primary">モデルを読み込む</button>
+            </div>
+            <div id="viewer-loading" class="busy-overlay hidden"><div class="spinner"></div><span>読み込んでいます…</span></div>
+        </div>
+    </section>
+</main>
+
+<div class="splitter-h" id="splitter-h" title="ドラッグで高さを変えます"></div>
+
+<section id="timeline-pane">
+    <div class="timeline-toolbar">
+        <button id="btn-to-start" class="icon-button" title="先頭へ（Home）">⏮</button>
+        <button id="btn-step-back" class="icon-button" title="1 フレーム戻る（←）">◀︎</button>
+        <button id="btn-play" class="icon-button play" title="再生 / 一時停止（スペース）">▶</button>
+        <button id="btn-step-forward" class="icon-button" title="1 フレーム進む（→）">▶︎</button>
+        <button id="btn-to-end" class="icon-button" title="末尾へ（End）">⏭</button>
+        <div class="time-display"><input id="frame-input" type="number" min="0" step="1" value="0" title="フレーム（30fps）">
+            <span class="time-sep">f</span><span id="time-text">00:00.00</span><span id="duration-text" class="dim"> / 00:00.00</span></div>
+        <label class="toolbar-label">再生速度
+            <select id="speed-select">
+                <option value="0.25">0.25×</option>
+                <option value="0.5">0.5×</option>
+                <option value="0.75">0.75×</option>
+                <option value="1" selected>1×</option>
+                <option value="1.25">1.25×</option>
+                <option value="1.5">1.5×</option>
+                <option value="2">2×</option>
+            </select>
+        </label>
+        <div class="volume-control">
+            <button id="btn-mute" class="icon-button" title="消音（M）">🔊</button>
+            <input id="volume-range" type="range" min="0" max="100" step="1" value="100" title="音量 100%">
+        </div>
+        <div class="toolbar-sep"></div>
+        <button id="btn-undo" class="button small" title="元に戻す（Ctrl+Z）" disabled>↶ 元に戻す</button>
+        <button id="btn-redo" class="button small" title="やり直す（Ctrl+Y）" disabled>↷ やり直す</button>
+        <div class="toolbar-sep"></div>
+        <span id="timeline-status" class="timeline-status"></span>
+        <div class="toolbar-spacer"></div>
+        <label class="toolbar-label">ズーム
+            <input id="zoom-range" type="range" min="0" max="100" value="45">
+        </label>
+        <button id="btn-zoom-fit" class="button small" title="全体を表示">全体</button>
+    </div>
+    <div id="timeline-body" class="timeline-body">
+        <div id="timeline-labels" class="timeline-labels"></div>
+        <div id="timeline-canvas-wrap" class="timeline-canvas-wrap">
+            <canvas id="timeline-canvas"></canvas>
+        </div>
+    </div>
+    <div id="timeline-scroll" class="timeline-scroll"><div id="timeline-scroll-inner"></div></div>
+</section>
+
+<footer id="statusbar" class="statusbar">
+    <span id="status-text">準備ができました</span>
+    <span class="statusbar-spacer"></span>
+    <span id="status-engine" class="status-chip busy hidden"></span>
+    <span id="status-version" class="dim"></span>
+</footer>
+
+<div id="menu-layer"></div>
+<div id="modal-root"></div>
+<div id="toast-root"></div>
+<script type="module" src="renderer.js"></script>
+</body>
+</html>

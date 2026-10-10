@@ -1,0 +1,7 @@
+# エンジンのテスト（CI の「エンジンのテスト」）に使うライブラリ。変更したら次で requirements-test.txt を作り直す:
+#   uv pip compile requirements-test.in -o requirements-test.txt --python-version 3.11 --python-platform x86_64-pc-windows-msvc
+# numpy・scipy はアプリと同じ版にする
+-c requirements.txt
+numpy
+scipy
+pytest==9.1.1
