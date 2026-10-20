@@ -22,15 +22,10 @@ TRACK_MAX_JUMP_M = 1.5     # 前のフレームの人からこれより離れた
 TRACK_LOST_SEC = 1.0       # これより長く見失ったら、人物を選び直す
 
 
-def select_device(preference='auto'):
+def cuda_available():
+    """推論は GPU（CUDA）だけで行う（CPU では実用的な速さにならないので、CPU 版の PyTorch は使わない）。"""
     import torch
-    if preference == 'cpu':
-        return 'cpu'
-    if torch.cuda.is_available():
-        return 'cuda'
-    if preference == 'cuda':
-        raise RuntimeError('CUDA に対応した GPU が見つかりません')
-    return 'cpu'
+    return torch.cuda.is_available()
 
 
 def gpu_info():
@@ -143,7 +138,7 @@ def _jit_load(path, device):
 def load_model(path, device, log, precision='auto'):
     """TorchScript を読み込む（同じプロセスでは使い回す）。戻り値 (モデル, 'fp16' | 'fp32')。
 
-    precision: auto（半精度を試し、NaN になる GPU では単精度）| fp16 | fp32。CPU は常に単精度。
+    precision: auto（半精度を試し、NaN になる GPU では単精度）| fp16 | fp32。
     """
     import torch
     import torchvision  # noqa: F401  NLF の TorchScript が使う torchvision::nms などの演算を登録する
@@ -151,8 +146,6 @@ def load_model(path, device, log, precision='auto'):
     # TorchScript のグラフの最適化を止める（最初の 2 回の推論に数分かかり、入力の形が変わるたびにやり直すため。
     # 最適化しなくても推論の速さはほとんど変わらない）
     torch._C._set_graph_executor_optimize(False)
-    if device == 'cpu':
-        precision = 'fp32'
     key = (str(path), device, precision)
     if key in _MODEL_CACHE:
         return _MODEL_CACHE[key]

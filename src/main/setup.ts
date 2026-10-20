@@ -5,7 +5,7 @@ import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync,
 import { dirname, join, resolve, sep } from "node:path";
 import type { SetupProgress, SetupStatus } from "../shared/types";
 import { download, formatBytes } from "./downloads";
-import { detectGpu, torchVariant } from "./gpu";
+import { detectGpu } from "./gpu";
 import { devPython, engineDir, handModelPath, modelsDir, nlfModelPath, runtimeDir, userDataDir, uvExe, venvDir, venvPython } from "./paths";
 import { loadSettings, RUNTIME_VERSION, saveSettings, TERMS_VERSION } from "./settings";
 import { extractZip } from "./zip";
@@ -19,6 +19,11 @@ const PYTHON_VERSION = "3.11.9";
 const MSVC_RUNTIME_PACKAGE = "msvc-runtime==14.44.35112";
 /** 版を変えたら engine/requirements.in の torch 等も合わせ、requirements.txt を作り直す */
 const TORCH_PACKAGES =["torch==2.7.1", "torchvision==0.22.1", "torchaudio==2.7.1"];
+/**
+ * 入れる PyTorch の種類（CUDA 12.8 版だけ。CPU 版は使わない）。2.7.1 の cu128 版は GTX 900 番台〜RTX 50 番台
+ * （sm_50〜sm_120）に対応する。変えたら engine/mmt_engine/selftest.py の MIN_DRIVER_CUDA も合わせる
+ */
+const TORCH_BACKEND = "cu128";
 export const NLF_URL = "https://github.com/isarandi/nlf/releases/download/v0.3.2/nlf_l_multi_0.3.2.torchscript";
 const NLF_MIN_BYTES = 300 * 1024 ** 2;
 const NLF_SHA256 = "52bee28edb6ea9148691331df87cfc238d7e3d9134dc60104a5aaed282a9ddad";
@@ -70,7 +75,8 @@ export async function setupStatus(): Promise<SetupStatus> {
     let runtimeReady = false;
     try {
         const marker = JSON.parse(readFileSync(readyMarker(), "utf-8"));
-        runtimeReady = marker.version === RUNTIME_VERSION && existsSync(venvPython());
+        // 以前の版が入れた CPU 版などの実行環境は、入れ直す
+        runtimeReady = marker.version === RUNTIME_VERSION && marker.variant === TORCH_BACKEND && existsSync(venvPython());
     } catch {
         runtimeReady = false;
     }
@@ -168,13 +174,18 @@ export class Setup {
         }
         this.check();
         // ---- Python と仮想環境 ----
-        const gpu = await detectGpu();
-        const variant = torchVariant(gpu);
         if (existsSync(venvDir())) rmSync(venvDir(), { recursive: true, force: true });
         ensureFreeSpace(userDataDir(), RUNTIME_FREE_BYTES, this.log);
         this.report({ phase: "runtime", message: `Python ${PYTHON_VERSION} を準備しています`, value: null });
         // PC にすでにある Python（Microsoft Store 版・conda など）は使わず、uv が入れた Python に揃える
         await this.uv(["venv", "--python", PYTHON_VERSION, "--python-preference", "only-managed", "--seed", venvDir()]);
+        this.check();
+        // ---- NVIDIA のドライバーと GPU ----
+        // PyTorch（約 2.5 GB）をダウンロードする前に、GPU 版が動くかを CUDA のドライバー API で確かめる
+        this.report({ phase: "runtime", message: "NVIDIA の GPU とドライバーを確認しています", value: null });
+        const driver = await this.engineJson<{ ok: boolean; error?: string; cudaVersion?: string; gpu?: string; capability?: string }>(["--driver-check"]);
+        if (!driver.ok) throw new Error(driver.error ?? "NVIDIA の GPU とドライバーを確認できませんでした");
+        this.log(`GPU: ${driver.gpu}（Compute Capability ${driver.capability}・ドライバーの CUDA ${driver.cudaVersion}）`);
         this.check();
         // ---- Visual C++ ランタイム ----
         // PyTorch は msvcp140.dll などを使うが、Visual C++ 再頒布可能パッケージが無い PC もあるので、Python の横に置く
@@ -182,16 +193,16 @@ export class Setup {
         await this.uv(["pip", "install", "--python", venvPython(), MSVC_RUNTIME_PACKAGE]);
         this.installMsvcRuntime();
         this.check();
-        // ---- PyTorch（GPU に合わせた種類）----
-        const label = variant === "cpu" ? "CPU 版" : `GPU 版（${variant}）`;
+        // ---- PyTorch（GPU 版）----
+        const gpu = await detectGpu();
         this.report({
             phase: "packages",
-            message: `PyTorch（${label}）をインストールしています（約 ${variant === "cpu" ? "0.3" : "2.5"} GB。時間がかかります）`,
+            message: `PyTorch（GPU 版・${TORCH_BACKEND}）をインストールしています（約 2.5 GB。時間がかかります）`,
             value: null,
-            detail: gpu ? `GPU: ${gpu.name}（ドライバー ${gpu.driver}・CUDA ${gpu.cudaVersion ?? "不明"}）` : "NVIDIA の GPU が見つかりません"
+            detail: `GPU: ${driver.gpu}${gpu ? `（ドライバー ${gpu.driver}）` : ""}`
         });
         await this.uv(["pip", "install", "--python", venvPython(), ...TORCH_PACKAGES,
-            "--index-url", `https://download.pytorch.org/whl/${variant}`]);
+            "--index-url", `https://download.pytorch.org/whl/${TORCH_BACKEND}`]);
         this.check();
         // ---- エンジンの依存ライブラリ ----
         this.report({ phase: "packages", message: "エンジンの依存ライブラリをインストールしています", value: null });
@@ -199,13 +210,13 @@ export class Setup {
         this.check();
         // ---- 確認 ----
         this.report({ phase: "verify", message: "実行環境を確認しています", value: null });
-        const report = await this.selftest();
+        const report = await this.engineJson<{ ok: boolean; errors?: Record<string, string> }>(["--selftest"]);
         if (!report.ok) {
             const errors = Object.entries(report.errors ?? {}).map(([k, v]) => `${k}: ${v}`).join("\n");
             throw new Error(`実行環境の確認に失敗しました。\n${errors}`);
         }
-        writeFileSync(readyMarker(), JSON.stringify({ version: RUNTIME_VERSION, variant, at: new Date().toISOString(), report }, null, 2));
-        saveSettings({ runtimeVersion: RUNTIME_VERSION, runtimeVariant: variant });
+        writeFileSync(readyMarker(), JSON.stringify({ version: RUNTIME_VERSION, variant: TORCH_BACKEND, at: new Date().toISOString(), report }, null, 2));
+        saveSettings({ runtimeVersion: RUNTIME_VERSION, runtimeVariant: TORCH_BACKEND });
         // ダウンロードしたパッケージのキャッシュ（約 6 GB）は、インストールした後は使わないので消す
         this.report({ phase: "verify", message: "ダウンロードしたパッケージのキャッシュを削除しています", value: null });
         try {
@@ -330,9 +341,10 @@ export class Setup {
         });
     }
 
-    private selftest(): Promise<{ ok: boolean; errors?: Record<string, string> }> {
+    /** エンジンを起動し、標準出力の最後の行の JSON を返す（--selftest・--driver-check） */
+    private engineJson<T>(args: string[]): Promise<T> {
         return new Promise((resolve, reject) => {
-            const child = spawn(venvPython(), ["-m", "mmt_engine", "--selftest"], {
+            const child = spawn(venvPython(), ["-m", "mmt_engine", ...args], {
                 cwd: engineDir(), windowsHide: true, env: this.engineEnv()
             });
             this.child = child;

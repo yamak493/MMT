@@ -814,7 +814,6 @@ export class App implements TimelineHost {
                     numAug: options.numAug,
                     antialias: options.antialias,
                     detectorThreshold: options.detectorThreshold,
-                    device: options.device,
                     hands: { enabled: options.hands },
                     lipsync: { enabled: options.lipsync, demucs: options.demucs, lang: options.lipsyncLang },
                     rigPath: this.doc.model?.rigPath ?? null,

@@ -36,7 +36,6 @@ export function defaultCapture(start = 0, end = 0): CaptureOptions {
         numAug: 3,
         antialias: 2,
         detectorThreshold: 0.25,
-        device: "auto",
         hands: true,
         lipsync: true,
         demucs: true,
@@ -83,11 +82,11 @@ export function presetOf(o: CaptureOptions): QualityPreset | "custom" {
 }
 
 /** 1 フレームあたりの推論時間の目安 [秒]（GPU の世代でかなり変わるので大まかな値） */
-export function estimateSeconds(frames: number, o: CaptureOptions, gpu: boolean): number {
-    const perFrame = (gpu ? 0.12 : 6) * o.numAug * (o.antialias > 1 ? 1.3 : 1) * Math.max(0.5, o.maxHeight / 720);
+export function estimateSeconds(frames: number, o: CaptureOptions): number {
+    const perFrame = 0.12 * o.numAug * (o.antialias > 1 ? 1.3 : 1) * Math.max(0.5, o.maxHeight / 720);
     let total = frames * perFrame;
     if (o.hands) total += frames * 0.03;
-    if (o.lipsync) total += (frames / 30) * (gpu ? 0.4 : 2);
+    if (o.lipsync) total += (frames / 30) * 0.4;
     total += frames * 0.08;   // 変換
     return total;
 }

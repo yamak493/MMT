@@ -145,9 +145,10 @@ def capture(job, params):
     model_path = nlf_model_path(params)
     if not model_path.exists():
         raise UserError('NLF の学習済みモデルがありません。セットアップをやり直してください')
-    device = nlf_runner.select_device(params.get('device', 'auto'))
-    if device == 'cpu':
-        job.log('GPU（CUDA）が見つからないので CPU で推論します。非常に時間がかかります', 'warn')
+    if not nlf_runner.cuda_available():
+        raise UserError('GPU（CUDA）を使えません。NVIDIA のドライバーを最新にしてから、'
+                        'ファイル → 実行環境を再セットアップ を行ってください')
+    device = 'cuda'
     model, precision = nlf_runner.load_model(model_path, device, job.log, params.get('precision', 'auto'))
     bm_path = body_model_path(params)
     if not bm_path.exists():

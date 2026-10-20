@@ -10,6 +10,9 @@ if __name__ == '__main__':
     if len(sys.argv) > 1 and sys.argv[1] == '--selftest':
         from .selftest import main as selftest_main
         sys.exit(selftest_main())
+    if len(sys.argv) > 1 and sys.argv[1] == '--driver-check':
+        from .selftest import driver_check
+        sys.exit(driver_check())
     if len(sys.argv) > 1 and sys.argv[1] == '--prefetch':
         from .selftest import prefetch
         sys.exit(prefetch())

@@ -136,7 +136,6 @@ export function captureDialog(input: CaptureDialogInput): Promise<CaptureOptions
         const numAug = select([["1", "1"], ["3", "3"], ["5", "5"], ["7", "7"]], String(o.numAug));
         const antialias = select([["1", "1"], ["2", "2"], ["4", "4"]], String(o.antialias));
         const thresh = numberInput(o.detectorThreshold, { min: "0.05", max: "0.9", step: "0.05", style: "width: 70px" });
-        const device = select([["auto", "自動（GPU があれば GPU）"], ["cuda", "GPU（CUDA）"], ["cpu", "CPU（非常に遅い）"]], o.device);
         const conv = conversionForm(o.conversion ?? defaultConversion());
         const estimate = h("div", { class: "estimate" });
         // 切り抜き（新しいキャプチャの既定は正方形。切り抜きの無かった頃の撮影は切り抜かない）
@@ -185,8 +184,7 @@ export function captureDialog(input: CaptureDialogInput): Promise<CaptureOptions
                     h("label", null, "バッチサイズ"), h("div", { class: "form-row" }, batch, h("span", { class: "form-help" }, "GPU のメモリが余っていれば大きく（足りなければ自動で分割します）")),
                     h("label", null, "TTA の枚数"), h("div", { class: "form-row" }, numAug, h("span", { class: "form-help" }, "複数の切り出しで推定して統合（震えが減るが時間は比例して増える）")),
                     h("label", null, "超サンプリング"), antialias,
-                    h("label", null, "人物検出のしきい値"), h("div", { class: "form-row" }, thresh, h("span", { class: "form-help" }, "検出が途切れるときは 0.15 程度に下げる")),
-                    h("label", null, "計算に使う装置"), device)));
+                    h("label", null, "人物検出のしきい値"), h("div", { class: "form-row" }, thresh, h("span", { class: "form-help" }, "検出が途切れるときは 0.15 程度に下げる")))));
 
         const modal = new Modal({
             title: input.title ?? "動画を読み込む",
@@ -231,7 +229,6 @@ export function captureDialog(input: CaptureDialogInput): Promise<CaptureOptions
                 numAug: Number(numAug.value),
                 antialias: Number(antialias.value),
                 detectorThreshold: clampNum(thresh.value, 0.05, 0.9, 0.25),
-                device: device.value as CaptureOptions["device"],
                 hands: handsBox.checked,
                 lipsync: lipBox.checked && info.has_audio,
                 demucs: demucsBox.checked,
@@ -252,9 +249,10 @@ export function captureDialog(input: CaptureDialogInput): Promise<CaptureOptions
             const fps = fpsSel.value === "auto" ? info.autoFps : fpsSel.value === "source" ? info.fps : Number(fpsSel.value);
             const frames = Math.floor(len * fps);
             lengthText.textContent = `長さ ${len.toFixed(2)} 秒（${frames} フレーム・MMD では ${Math.round(len * MMD_FPS)} フレーム）`;
-            const sec = estimateSeconds(frames, read(), !!input.gpu && device.value !== "cpu");
+            const sec = estimateSeconds(frames, read());
             const overlap = input.capturedRanges.some(([s, e]) => s < o.end && e > o.start);
-            const lines = [`処理時間の目安: 約 ${sec >= 120 ? `${Math.round(sec / 60)} 分` : `${Math.max(5, Math.round(sec))} 秒`}（${input.gpu ? `GPU: ${input.gpu.name}` : "GPU なし（CPU で推論します）"}）`];
+            const lines = [`処理時間の目安: 約 ${sec >= 120 ? `${Math.round(sec / 60)} 分` : `${Math.max(5, Math.round(sec))} 秒`}${input.gpu ? `（GPU: ${input.gpu.name}）` : ""}`];
+            if (!input.gpu) lines.push("NVIDIA の GPU を確認できませんでした。キャプチャには NVIDIA の GPU（GeForce GTX 900 番台以降）が必要です。");
             if (len > 120) lines.push("区間が長いので時間がかかります。まずは 10〜30 秒程度で試すのがおすすめです。");
             if (overlap) lines.push("キャプチャ済みの区間と重なっています。重なった所のタイムラインは新しいキャプチャで置き換えます。");
             if (Math.abs(fps - info.fps) > 0.01 && Math.abs(info.fps / fps - Math.round(info.fps / fps)) > 0.01) {
@@ -262,7 +260,7 @@ export function captureDialog(input: CaptureDialogInput): Promise<CaptureOptions
             }
             estimate.textContent = lines.join("\n");
             estimate.style.whiteSpace = "pre-line";
-            estimate.classList.toggle("warn", lines.length > 1 || !input.gpu);
+            estimate.classList.toggle("warn", lines.length > 1);
         }
 
         function setRange(s: number, e: number) {
@@ -323,7 +321,7 @@ export function captureDialog(input: CaptureDialogInput): Promise<CaptureOptions
             if (Number.isFinite(t)) setRange(o.start, Math.max(t, o.start + 0.2));
             else update();
         });
-        for (const el of [fpsSel, device, handsBox, lipBox, batch]) el.addEventListener("change", update);
+        for (const el of [fpsSel, handsBox, lipBox, batch]) el.addEventListener("change", update);
         heightSel.addEventListener("change", () => crop.refresh());
         video.addEventListener("loadedmetadata", () => { video.currentTime = o.start; });
         crop.refresh();

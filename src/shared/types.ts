@@ -70,7 +70,6 @@ export interface CaptureOptions {
     numAug: number;
     antialias: number;
     detectorThreshold: number;
-    device: "auto" | "cuda" | "cpu";
     hands: boolean;
     lipsync: boolean;
     demucs: boolean;
