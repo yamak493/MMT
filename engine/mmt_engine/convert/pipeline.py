@@ -291,8 +291,9 @@ def convert(source, bm, skel, cfg, prepared=None, hands_analysis=None, contact_o
     flight = np.asarray(ground.flight, bool)
     contact = apply_overrides(without_frames(contact, flight, cfg.contact), force_on, force_off)
     auto = without_frames(auto, flight, cfg.contact)
-    if lean.clamped:
-        warns.append('前後の傾きの補正角が上限に達しました（座る・寄りかかる動きでは傾きの補正を外してください）')
+    clamped = [name for name, c in zip(('前後', '左右'), lean.clamped) if c]
+    if clamped:
+        warns.append(f'{"・".join(clamped)}の傾きの補正角が上限に達しました（座る・寄りかかる動きでは傾きの補正を外してください）')
 
     # ---- 7. 足ＩＫ ----
     progress(0.3, '足ＩＫ・センター')

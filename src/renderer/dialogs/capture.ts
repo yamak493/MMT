@@ -42,7 +42,7 @@ export function conversionForm(initial: ConversionSettings): { el: HTMLElement; 
     const [wristL, wrist] = check("手首の向きを手の検出で補正する", c.wristFromHands);
     const [legL, leg] = check("膝の向きを合わせる（脚の回転のキー）", c.legKeys);
     const [groundL, ground] = check("浮いた体を床に戻す（座る・寝転ぶ動きでは外す）", c.groundEnabled);
-    const [leanL, lean] = check("前後の傾きを補正する（寄りかかる動きでは外す）", c.leanEnabled);
+    const [leanL, lean] = check("体の前後・左右の傾きを補正する（寄りかかる動きでは外す）", c.leanEnabled);
     const [bothL, both] = check("接地優先で両足を床に着ける", c.lockedBothFeet);
     const parts: [keyof ConversionSettings["bodyParts"], string][] = [
         ["torso", "胴部"], ["chest", "胸"], ["head", "頭部"], ["legs", "脚"], ["clothes", "服・装飾"]

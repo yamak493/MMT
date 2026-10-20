@@ -130,9 +130,10 @@ DEFAULTS = {
         'prior_sigma_m': 0.5,
         'accel_sigma_m_per_s2': 3.0,
     },
-    # ---- 6c. 前後の傾きの補正 ----
+    # ---- 6c. 前後・左右の傾きの補正 ----
     'lean': {
         'enabled': True,
+        'side_enabled': True,        # 左右（カメラの左右方向）の傾きも補正する
         'window_sec': 3.0,
         'max_deg': 25.0,
         'outlier_m': 0.5,

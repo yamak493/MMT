@@ -1,9 +1,10 @@
-"""ステージ6c: 前後の傾きの補正（全身の重心が、接地している足の上に来るように体を起こす）。
+"""ステージ6c: 前後・左右の傾きの補正（全身の重心が、接地している足の上に来るように体を起こす）。
 
-単眼推定では、体がカメラに向かって前後に傾く角度がほとんど決まらない。体の縦のラインを鉛直に直すとお辞儀など
-本当の傾きまで消えるので、「全身の重心は、数秒の平均では接地している足の上にある」という条件を使う。
-各フレームの重心と支持点のカメラの奥行き方向の差を、数秒の窓で最も小さくする補正角を格子の上で探し、
-足首から下はそのままにして骨盤から上を傾ける。
+単眼推定では、体がカメラに向かって前後に傾く角度がほとんど決まらない。左右（画面の横）の傾きも、床の傾きの
+推定のずれなどで残ることがある。体の縦のラインを鉛直に直すとお辞儀など本当の傾きまで消えるので、
+「全身の重心は、数秒の平均では接地している足の上にある」という条件を使う。
+各フレームの重心と支持点のカメラの奥行き方向（次に左右方向）の差を、数秒の窓で最も小さくする補正角を格子の上で
+探し、足首から下はそのままにして骨盤から上を傾ける。
 """
 from dataclasses import dataclass
 
@@ -17,6 +18,7 @@ from .com import HIPS, body_com, com_weights
 KNEES = (4, 5)
 FIXED = (7, 8, 10, 11)       # 足首・足先（足の位置と向きは変えない）
 UPPER = tuple(j for j in range(24) if j not in HIPS + KNEES + FIXED)
+UP = np.array([0.0, 1.0, 0.0])
 
 
 def horizontal_depth_direction(axis):
@@ -50,21 +52,27 @@ def support(contact_points, flags, band):
 
 @dataclass
 class LeanResult:
-    angle: np.ndarray        # (T,) 補正角 [rad]
+    angle: np.ndarray        # (T, 2) 補正角 [rad]（前後・左右）
     shift: np.ndarray        # (T, 3) 骨盤の平行移動
-    direction: np.ndarray    # (3,) カメラの奥行き方向（水平）
-    axis: np.ndarray         # (3,) 回転の軸（水平、カメラの左右）
-    before_deg: np.ndarray
-    after_deg: np.ndarray
+    directions: np.ndarray   # (2, 3) 傾ける向き（水平）: カメラの奥行き方向・左右方向
+    before_deg: np.ndarray   # (T, 2)
+    after_deg: np.ndarray    # (T, 2)
     supported: np.ndarray
     enabled: bool
-    clamped: bool = False
+    clamped: tuple = (False, False)
+
+    def rotation(self):
+        """(T, 3, 3) 前後に傾けてから左右に傾ける回転。"""
+        R = np.broadcast_to(np.eye(3), (len(self.angle), 3, 3))
+        for d, a in zip(self.directions, self.angle.T):
+            R = np.einsum('tab,tbc->tac', rotation_about(np.cross(UP, d), a), R)
+        return R
 
     def apply(self, kin):
         """骨盤から上を回して骨盤を平行移動する。足首から下は変えない（膝は股関節の移動の半分）。"""
         if not self.enabled:
             return kin
-        R = rotation_about(self.axis, self.angle)
+        R = self.rotation()
         G = np.array(kin.glob_rot, copy=True)
         P = np.array(kin.joints, copy=True)
         p0 = kin.joints[:, 0]
@@ -79,8 +87,9 @@ class LeanResult:
         if not self.enabled:
             return dict(enabled=False)
         deg = np.rad2deg(self.angle)
-        return dict(enabled=True, min_deg=round(float(deg.min()), 2), max_deg=round(float(deg.max()), 2),
-                    clamped=self.clamped)
+        return dict(enabled=True, min_deg=round(float(deg[:, 0].min()), 2), max_deg=round(float(deg[:, 0].max()), 2),
+                    side_min_deg=round(float(deg[:, 1].min()), 2), side_max_deg=round(float(deg[:, 1].max()), 2),
+                    clamped=bool(self.clamped[0]), side_clamped=bool(self.clamped[1]))
 
 
 def pivot_height(kin, fps):
@@ -126,45 +135,24 @@ def _refine(cost, grid):
     return theta, ~inner & (len(grid) > 1)
 
 
-def estimate_lean(kin, contact, depth_axis, rest, fps, unit, cfg, flight=None, valid=None):
-    """ステージ6c。kin: ステージ6a の後（床 y = 0・MMD 単位）/ contact: 接地判定 / flight: 6a の滞空。"""
+def _fit(kin, d, flags, use, centers, used, rest, height, fps, unit, cfg):
+    """向き d (3,) の補正角を求める。戻り値 (角度 (T,), 補正前・後の重心の傾き [deg] (T,), 上限に達したか)。"""
     T = len(kin.joints)
-    d = horizontal_depth_direction(depth_axis)
-    up = np.array([0.0, 1.0, 0.0])
-    axis = np.cross(up, d)
-    zeros = np.zeros(T)
-    nan = np.full(T, np.nan)
-
-    flags = np.asarray(contact.flags, bool)
     n_feet = flags.sum(1)
-    observed = np.ones(T, bool) if valid is None else np.asarray(valid, bool)
-    supported = (n_feet > 0) & observed
-    if not cfg.enabled or supported.sum() < max(3, int(round(fps))):
-        return LeanResult(zeros, np.zeros((T, 3)), d, axis, nan, nan, supported, False)
-
-    use, centers = support(kin.contact_points, flags, float(cfg.support_band_m) * unit)
+    supported = n_feet > 0
     center = (centers @ d * flags).sum(1) / np.maximum(n_feet, 1)
     along = kin.contact_points @ d
     lo = np.where(use, along, np.inf).min(axis=(1, 2))
     hi = np.where(use, along, -np.inf).max(axis=(1, 2))
     t = np.arange(T)
     center = np.interp(t, t[supported], center[supported])
-    filled = np.zeros(T, bool)
-    max_gap = float(cfg.fill_gap_sec) * fps
-    for s, e in filters.runs(~supported):
-        if 0 < s and e < T - 1 and e - s + 1 <= max_gap:
-            filled[s:e + 1] = True
-    if flight is not None:
-        filled &= ~np.asarray(flight, bool)
-    used = (supported | filled) & observed
     fwd = kin.glob_rot[:, 0, :, 2] * [1.0, 0.0, 1.0]
     fwd /= np.maximum(np.linalg.norm(fwd, axis=1, keepdims=True), 1e-9)
-    left = np.cross(up, fwd)
+    left = np.cross(UP, fwd)
     off = rest_offset(rest) * unit
     target = (off[0] * left + off[2] * fwd) @ d
     center, lo, hi = center + target, lo + target, hi + target
 
-    height = pivot_height(kin, fps)
     coef = com_along(kin, d, height)
     step = np.deg2rad(0.25)
     limit = np.deg2rad(float(cfg.max_deg))
@@ -189,10 +177,49 @@ def estimate_lean(kin, contact, depth_axis, rest, fps, unit, cfg, flight=None, v
         angle, edge = np.full(T, a[0]), np.full(T, e[0])
     angle = np.clip(angle, -limit, limit)
 
-    shift = (height * np.tan(angle))[:, None] * d
     com_height = body_com(kin.joints)[:, 1]
     com0 = coef @ np.array([1.0, 0.0, 1.0, 0.0])
     com1 = (coef * np.stack([np.ones(T), np.tan(angle), np.cos(angle), np.sin(angle)], 1)).sum(1)
     before = np.where(used, np.rad2deg(np.arctan2(com0 - center, com_height)), np.nan)
     after = np.where(used, np.rad2deg(np.arctan2(com1 - center, com_height)), np.nan)
-    return LeanResult(angle, shift, d, axis, before, after, used, True, bool(edge[used].any()))
+    return angle, before, after, bool(edge[used].any())
+
+
+def estimate_lean(kin, contact, depth_axis, rest, fps, unit, cfg, flight=None, valid=None):
+    """ステージ6c。kin: ステージ6a の後（床 y = 0・MMD 単位）/ contact: 接地判定 / flight: 6a の滞空。
+
+    前後（カメラの奥行き方向）の補正角を求めて傾けた後の姿勢で、左右（カメラの左右方向）の補正角を求める。
+    """
+    T = len(kin.joints)
+    d = horizontal_depth_direction(depth_axis)
+    directions = np.stack([d, np.cross(UP, d)])
+    nan = np.full((T, 2), np.nan)
+
+    flags = np.asarray(contact.flags, bool)
+    n_feet = flags.sum(1)
+    observed = np.ones(T, bool) if valid is None else np.asarray(valid, bool)
+    supported = (n_feet > 0) & observed
+    if not cfg.enabled or supported.sum() < max(3, int(round(fps))):
+        return LeanResult(np.zeros((T, 2)), np.zeros((T, 3)), directions, nan, nan, supported, False)
+
+    use, centers = support(kin.contact_points, flags, float(cfg.support_band_m) * unit)
+    filled = np.zeros(T, bool)
+    max_gap = float(cfg.fill_gap_sec) * fps
+    for s, e in filters.runs(~supported):
+        if 0 < s and e < T - 1 and e - s + 1 <= max_gap:
+            filled[s:e + 1] = True
+    if flight is not None:
+        filled &= ~np.asarray(flight, bool)
+    used = (supported | filled) & observed
+
+    height = pivot_height(kin, fps)
+    angle, before, after = np.zeros((T, 2)), nan.copy(), nan.copy()
+    clamped = [False, False]
+    result, current = None, kin
+    for i in range(2 if cfg.side_enabled else 1):
+        angle[:, i], before[:, i], after[:, i], clamped[i] = _fit(
+            current, directions[i], flags, use, centers, used, rest, height, fps, unit, cfg)
+        shift = height[:, None] * (np.tan(angle) @ directions)
+        result = LeanResult(angle.copy(), shift, directions, before, after, used, True, tuple(clamped))
+        current = result.apply(kin)
+    return result

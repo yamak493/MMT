@@ -197,6 +197,21 @@ def test_outlier_frames_are_replaced(run_walk):
     assert res.info['outliers']['frames']['left_arm'] >= 2
 
 
+@pytest.mark.parametrize('heading_deg', [0.0, 90.0])
+def test_lean_is_corrected_in_both_directions(run_walk, heading_deg):
+    """カメラの奥行き方向（heading 0）にも左右方向（heading 90）にも、傾けた体を起こす。"""
+    def spine_tilt(res):
+        v = res.kin.joints[:, 12] - res.kin.joints[:, 0]
+        h = np.deg2rad(heading_deg)
+        return np.rad2deg(np.arctan2(v[:, 0] * np.sin(h) + v[:, 2] * np.cos(h), v[:, 1])).mean()
+    _, upright = run_walk(num_frames=180, speed=0.5, heading_deg=heading_deg)
+    _, leaned = run_walk(num_frames=180, speed=0.5, heading_deg=heading_deg, lean_deg=10.0)
+    assert spine_tilt(leaned) == pytest.approx(spine_tilt(upright), abs=1.5)
+    _, off = run_walk(num_frames=180, speed=0.5, heading_deg=heading_deg, lean_deg=10.0,
+                      overrides={'lean.side_enabled': False})
+    assert (spine_tilt(off) - spine_tilt(upright) > 7.0) == (heading_deg == 90.0)
+
+
 def test_flip_facing(run_walk):
     _, a = run_walk(num_frames=90)
     _, b = run_walk(num_frames=90, overrides={'floor.flip_facing': True})
