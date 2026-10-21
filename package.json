@@ -1,7 +1,7 @@
 {
   "name": "monocam-motion-tracer",
   "productName": "MonoCam Motion Trace",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "単眼カメラの動画から人体のモーションを推定し、MMD のモーション（VMD）を作成するソフトウェア",
   "main": "dist/main/main.js",
   "author": "yamak493",

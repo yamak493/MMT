@@ -5,5 +5,5 @@ Electron のアプリから子プロセスとして起動され（python -m mmt_
 MMD 用のモーションへの変換を行う。
 """
 
-__version__ = '1.0.0'
+__version__ = '1.0.1'
 PROTOCOL_VERSION = 1

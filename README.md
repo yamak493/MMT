@@ -57,6 +57,10 @@
 | 足が浮遊する | タイムラインにある「足ピタ」を活用する |
 | 足首に違和感がある | MMD（MikuMikuDance）で「足首」や「足首D」の角度、「つま先IK」の位置を調整する |
 
+## 紹介動画
+[ニコニコ動画](https://www.nicovideo.jp/watch/sm46950933)
+[Youtube](https://www.youtube.com/watch?v=llRXCR1Mg0o)
+
 ## ライセンス
 
 本ソフトウェアのソースコードのライセンスは、 [GNU Affero General Public License v3.0](LICENSE) です。
