@@ -27,7 +27,7 @@
 
 ## インストール
 
-[Releases](https://github.com/yamak493/MMT/releases) からインストーラーをダウンロードしてください。
+[BowlRoll](https://bowlroll.net/file/362078) からインストーラーをダウンロードしてください。
 
 ## 使い方
 
@@ -58,8 +58,8 @@
 | 足首に違和感がある | MMD（MikuMikuDance）で「足首」や「足首D」の角度、「つま先IK」の位置を調整する |
 
 ## 紹介動画
-[ニコニコ動画](https://www.nicovideo.jp/watch/sm46950933)
-[Youtube](https://www.youtube.com/watch?v=llRXCR1Mg0o)
+- [ニコニコ動画](https://www.nicovideo.jp/watch/sm46951485)
+- [Youtube](https://www.youtube.com/watch?v=kr07l8K0MPk)
 
 ## ライセンス
 
